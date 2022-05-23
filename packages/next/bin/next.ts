@@ -24,6 +24,7 @@ export const commands: { [command: string]: () => Promise<cliCommand> } = {
   telemetry: () =>
     Promise.resolve(require('../cli/next-telemetry').nextTelemetry),
   info: () => Promise.resolve(require('../cli/next-info').nextInfo),
+  run: () => Promise.resolve(require('../cli/next-run').nextRun),
 }
 
 const args = arg(
