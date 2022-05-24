@@ -10,6 +10,8 @@ import { trace } from '../trace'
 import loadConfig from '../server/config'
 import { PHASE_PRODUCTION_BUILD } from '../shared/lib/constants'
 import { NextConfigComplete } from '../server/config-shared'
+import { runCompiler } from '../build/compiler'
+import { findPagesDir } from '../lib/find-pages-dir'
 
 const nextRun: cliCommand = (argv) => {
   const validArgs: arg.Spec = {
@@ -49,6 +51,13 @@ const nextRun: cliCommand = (argv) => {
     printAndExit(`> No such directory exists as the project root: ${dir}`)
   }
 
+  // How to test:
+  // In root:
+  //   yarn build
+  // Then:
+  //   cd examples/basic-css
+  //   node --trace-deprecation --enable-source-maps ../../packages/next/dist/bin/next run scripts/test.js
+
   // yarn build && yarn next run scripts/check-manifests.js
 
   const file = args._[0]
@@ -58,15 +67,23 @@ const nextRun: cliCommand = (argv) => {
   })
 
   ;(async function asd() {
+    const entrypointName = file
+
     const config: NextConfigComplete = await nextBuildSpan
       .traceChild('load-next-config')
       .traceAsyncFn(() => loadConfig(PHASE_PRODUCTION_BUILD, dir, null))
 
-    const configs = await getBaseWebpackConfig(dir, {
+    const { pages: pagesDir, views: viewsDir } = findPagesDir(
+      dir,
+      config.experimental.viewsDir
+    )
+
+    const webpackConfig = await getBaseWebpackConfig(dir, {
       buildId: '',
       config,
       hasReactRoot: false,
-      pagesDir: '',
+      pagesDir,
+      viewsDir,
       reactProductionProfiling: false,
       rewrites: {
         fallback: [],
@@ -76,11 +93,21 @@ const nextRun: cliCommand = (argv) => {
       runWebpackSpan: nextBuildSpan,
       compilerType: 'server',
       entrypoints: {
-        [file]: file,
+        [entrypointName]: [file],
       },
+      target: 'server',
     })
 
-    console.log(configs)
+    const result = await runCompiler(webpackConfig, {
+      runWebpackSpan: nextBuildSpan,
+    })
+
+    const { compiler, assets } = result.stats!.compilation
+
+    console.log(assets)
+
+    const compiledEntrypoint = `${compiler.options.output.path}/${entrypointName}`
+    console.log(compiledEntrypoint)
   })()
 }
 
