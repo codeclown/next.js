@@ -6,6 +6,7 @@ import isError from '../lib/is-error'
 import getBaseWebpackConfig from '../build/webpack-config'
 import { getProjectDir } from '../lib/get-project-dir'
 import { existsSync } from 'fs'
+import { join, relative, resolve } from 'path'
 import { trace } from '../trace'
 import loadConfig from '../server/config'
 import { PHASE_PRODUCTION_BUILD } from '../shared/lib/constants'
@@ -52,22 +53,25 @@ const nextRun: cliCommand = (argv) => {
   }
 
   // How to test:
-  // In root:
-  //   yarn build
+  // In the background:
+  //   cd packages/next
+  //   yarn dev
   // Then:
   //   cd examples/basic-css
   //   node --trace-deprecation --enable-source-maps ../../packages/next/dist/bin/next run scripts/test.js
 
   // yarn build && yarn next run scripts/check-manifests.js
 
-  const file = args._[0]
+  const originalFilePath = args._[0]
+  const relativeFilePath = relative(dir, originalFilePath)
+  const importFilePath = `./${relativeFilePath.replace('.js', '')}`
 
   const nextBuildSpan = trace('next-run', undefined, {
     version: process.env.__NEXT_VERSION as string,
   })
 
   ;(async function asd() {
-    const entrypointName = file
+    const entrypointName = 'heyo'
 
     const config: NextConfigComplete = await nextBuildSpan
       .traceChild('load-next-config')
@@ -79,7 +83,7 @@ const nextRun: cliCommand = (argv) => {
     )
 
     const webpackConfig = await getBaseWebpackConfig(dir, {
-      buildId: '',
+      buildId: 'asd',
       config,
       hasReactRoot: false,
       pagesDir,
@@ -93,21 +97,48 @@ const nextRun: cliCommand = (argv) => {
       runWebpackSpan: nextBuildSpan,
       compilerType: 'server',
       entrypoints: {
-        [entrypointName]: [file],
+        [entrypointName]: [importFilePath],
       },
       target: 'server',
     })
+
+    // console.log(
+    //   JSON.stringify(webpackConfig, (_, v) =>
+    //     typeof v === 'bigint' ? v.toString() : v
+    //   )
+    // )
 
     const result = await runCompiler(webpackConfig, {
       runWebpackSpan: nextBuildSpan,
     })
 
-    const { compiler, assets } = result.stats!.compilation
+    // console.log(result)
 
-    console.log(assets)
+    // const { errors, warnings, stats } = result
 
-    const compiledEntrypoint = `${compiler.options.output.path}/${entrypointName}`
-    console.log(compiledEntrypoint)
+    // if (errors) {
+    //   console.error('result', errors)
+    //   process.exit(1)
+    // }
+
+    const { compiler, assets, errors } = result.stats!.compilation
+
+    if (errors.length) {
+      console.error('stats', errors)
+      process.exit(1)
+    }
+
+    // console.log(result.stats!.compilation, assets)
+    // console.log(compiler.options.output)
+
+    const compiledEntrypoint = join(
+      compiler.options.output.path!.toString(),
+      entrypointName
+    )
+    // console.log(compiledEntrypoint)
+
+    const compiledFilePath = join(dir, `.next/server/${entrypointName}`)
+    require(compiledFilePath)
   })()
 }
 
